@@ -6,6 +6,7 @@
 
 long int soma = 0; //variavel compartilhada entre as threads
 pthread_mutex_t mutex; //variavel de lock para exclusao mutua
+pthread_mutex_t mutex_print; //variavel de lock para impressao
 pthread_cond_t cond_print;
 pthread_cond_t cond_multi;
 
@@ -26,7 +27,7 @@ void *ExecutaTarefa (void *arg) {
             pronto_para_imprimir = 1;
             pthread_cond_signal(&cond_multi);
             while (pronto_para_imprimir && !terminou) {
-                pthread_cond_wait(&cond_print, &mutex);
+                pthread_cond_wait(&cond_print, &mutex_print);
             }
         }
 
@@ -44,17 +45,17 @@ void *extra (void *args) {
     long int esperado = nthreads * TAM;
 
     while (1) {
-        pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&mutex_print);
 
         while (!pronto_para_imprimir && soma < esperado) {
-            pthread_cond_wait(&cond_multi, &mutex);
+            pthread_cond_wait(&cond_multi, &mutex_print);
         }
 
         if (soma >= esperado) {
             // sinaliza que acabou
             terminou = 1;
             pthread_cond_broadcast(&cond_print);
-            pthread_mutex_unlock(&mutex);
+            pthread_mutex_unlock(&mutex_print);
             break;
         }
 
@@ -64,7 +65,7 @@ void *extra (void *args) {
         pronto_para_imprimir = 0;
         pthread_cond_broadcast(&cond_print);
 
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&mutex_print);
     }
     printf("Extra : terminou!\n");
     pthread_exit(NULL);
@@ -86,8 +87,9 @@ int main(int argc, char *argv[]) {
     tid = (pthread_t*) malloc(sizeof(pthread_t)*(nthreads+1));
     if(tid==NULL) {puts("ERRO--malloc"); return 2;}
 
-    //--inicilaiza o mutex (lock de exclusao mutua)
+    //--inicializa o mutex e condicoes
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&mutex_print, NULL);
     pthread_cond_init (&cond_multi, NULL);
     pthread_cond_init (&cond_print, NULL);
 
@@ -110,8 +112,9 @@ int main(int argc, char *argv[]) {
         } 
     } 
 
-    //--finaliza o mutex
+    //--finaliza o mutex e condicoes
     pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&mutex_print);
     pthread_cond_destroy(&cond_multi);
     pthread_cond_destroy(&cond_print);
     free(tid);

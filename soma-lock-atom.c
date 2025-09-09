@@ -1,7 +1,3 @@
-/* Disciplina: Programacao Concorrente */
-/* Prof.: Silvana Rossetto */
-/* Codigo: Comunicação entre threads usando variável compartilhada e exclusao mutua com bloqueio */
-
 #include <stdio.h>
 #include <stdlib.h> 
 #include <pthread.h>
@@ -13,25 +9,30 @@ pthread_mutex_t mutex; //variavel de lock para exclusao mutua
 pthread_cond_t cond_print;
 pthread_cond_t cond_multi;
 
-//funcao executada pelas threads
+int pronto_para_imprimir = 0; 
+int terminou = 0; // flag para avisar que acabou
+
+//funcao executada pelas threads de cálculo
 void *ExecutaTarefa (void *arg) {
     long int id = (long int) arg;
     printf("Thread : %ld esta executando...\n", id);
 
     for (int i=0; i<TAM; i++) {
-        //--entrada na SC
         pthread_mutex_lock(&mutex);
-        //--SC (seção critica)
-        soma++; //incrementa a variavel compartilhada
 
-        if(!(soma%1000)) {
-            //printf("%ld\n", soma);
-            pthread_cond_broadcast(&cond_multi);
-            pthread_cond_wait(&cond_print, &mutex);
+        soma++;
+
+        if (soma % 1000 == 0) {
+            pronto_para_imprimir = 1;
+            pthread_cond_signal(&cond_multi);
+            while (pronto_para_imprimir && !terminou) {
+                pthread_cond_wait(&cond_print, &mutex);
+            }
         }
-        //--saida da SC
+
         pthread_mutex_unlock(&mutex);
     }
+
     printf("Thread : %ld terminou!\n", id);
     pthread_exit(NULL);
 }
@@ -41,12 +42,26 @@ void *extra (void *args) {
     int nthreads = (int)(long int)args;
     printf("Extra : esta executando...\n");
     long int esperado = nthreads * TAM;
-    while(soma < esperado) {
-        // Espera até que 'soma' atinja o valor 
+
+    while (1) {
         pthread_mutex_lock(&mutex);
 
-        pthread_cond_wait(&cond_multi, &mutex);
-        printf("soma = %ld \n", soma);
+        while (!pronto_para_imprimir && soma < esperado) {
+            pthread_cond_wait(&cond_multi, &mutex);
+        }
+
+        if (soma >= esperado) {
+            // sinaliza que acabou
+            terminou = 1;
+            pthread_cond_broadcast(&cond_print);
+            pthread_mutex_unlock(&mutex);
+            break;
+        }
+
+        // imprime quando chega múltiplo de 1000
+        printf("soma = %ld\n", soma);
+
+        pronto_para_imprimir = 0;
         pthread_cond_broadcast(&cond_print);
 
         pthread_mutex_unlock(&mutex);
@@ -75,7 +90,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init (&cond_multi, NULL);
     pthread_cond_init (&cond_print, NULL);
-    
+
     //--cria thread de log
     if (pthread_create(&tid[nthreads], NULL, extra, (void *)(long int)nthreads)) {
         printf("--ERRO: pthread_create()\n"); exit(-1);
